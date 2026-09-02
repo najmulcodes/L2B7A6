@@ -1,0 +1,610 @@
+openapi: 3.0.3
+info:
+  title: Developer Assessment Platform API
+  description: >
+    B7A6 backend assignment (Student ID L2B7-0384). A platform where
+    Companies create coding/MCQ/written assessments, invite Candidates to
+    take them, and Admins oversee the whole platform. All endpoints are
+    versioned under /api/v1.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local development
+  - url: https://<your-deployment>.vercel.app/api/v1
+    description: Production (Vercel)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data: {}
+        meta:
+          type: object
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+    ErrorResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        errors:
+          type: array
+          items: {}
+  responses:
+    Unauthorized:
+      description: Missing/invalid access token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: Authenticated but role not permitted
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ValidationError:
+      description: Request failed validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Companies
+  - name: Candidates
+  - name: Problems
+  - name: Assessments
+  - name: Invitations
+  - name: Attempts
+  - name: Submissions
+  - name: Payments
+  - name: Admin
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new CANDIDATE or COMPANY account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, example: "Jane Doe" }
+                email: { type: string, format: email }
+                password: { type: string, example: "StrongPass1" }
+                role: { type: string, enum: [CANDIDATE, COMPANY], default: CANDIDATE }
+                companyName: { type: string, description: "Required when role=COMPANY" }
+      responses:
+        "201": { description: Registered, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessResponse" } } } }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "409": { description: Email already registered }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email/password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200": { description: Logged in, content: { application/json: { schema: { $ref: "#/components/schemas/SuccessResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/refresh-token:
+    post:
+      tags: [Auth]
+      summary: Exchange a refresh token for a new access/refresh token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200": { description: New tokens issued }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Invalidate the current session's refresh token
+      responses:
+        "200": { description: Logged out }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Sign in / register using a Google ID token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: { type: string }
+                role: { type: string, enum: [CANDIDATE, COMPANY], default: CANDIDATE }
+                companyName: { type: string }
+      responses:
+        "200": { description: Authenticated via Google }
+        "400": { description: Google Sign-In not configured or invalid token }
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get the current user's profile
+      responses:
+        "200": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [Users]
+      summary: Update the current user's name/avatar
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                avatarUrl: { type: string, format: uri }
+      responses:
+        "200": { description: Updated }
+
+  /users/me/password:
+    patch:
+      tags: [Users]
+      summary: Change the current user's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string }
+      responses:
+        "200": { description: Password updated }
+        "401": { description: Current password incorrect }
+
+  /companies/me:
+    get:
+      tags: [Companies]
+      summary: Get the current company's profile (COMPANY only)
+      responses: { "200": { description: OK } }
+    patch:
+      tags: [Companies]
+      summary: Update the current company's profile (COMPANY only)
+      responses: { "200": { description: Updated } }
+
+  /companies/{id}:
+    get:
+      tags: [Companies]
+      summary: Get a company's public profile
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /candidates/me:
+    patch:
+      tags: [Candidates]
+      summary: Update the current candidate's profile (CANDIDATE only)
+      responses: { "200": { description: Updated } }
+
+  /candidates/{id}:
+    get:
+      tags: [Candidates]
+      summary: View a candidate's profile (COMPANY/ADMIN only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /problems:
+    post:
+      tags: [Problems]
+      summary: Create a problem in the company's problem bank (COMPANY only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, description, type]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                type: { type: string, enum: [MCQ, CODING, WRITTEN] }
+                difficulty: { type: string, enum: [EASY, MEDIUM, HARD] }
+                points: { type: integer }
+                tags: { type: array, items: { type: string } }
+                options:
+                  type: array
+                  items:
+                    type: object
+                    properties: { id: { type: string }, text: { type: string } }
+                correctOption: { type: string }
+                starterCode: { type: string }
+                language: { type: string }
+                testCases:
+                  type: array
+                  items:
+                    type: object
+                    properties: { input: { type: string }, expectedOutput: { type: string } }
+      responses:
+        "201": { description: Created }
+        "400": { $ref: "#/components/responses/ValidationError" }
+    get:
+      tags: [Problems]
+      summary: List the company's problem bank (paginated, filterable, searchable)
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: type, in: query, schema: { type: string, enum: [MCQ, CODING, WRITTEN] } }
+        - { name: difficulty, in: query, schema: { type: string, enum: [EASY, MEDIUM, HARD] } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: sortBy, in: query, schema: { type: string, enum: [createdAt, points, title] } }
+        - { name: sortOrder, in: query, schema: { type: string, enum: [asc, desc] } }
+      responses: { "200": { description: OK } }
+
+  /problems/{id}:
+    get:
+      tags: [Problems]
+      summary: Get a problem by id (owner company only)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/NotFound" } }
+    patch:
+      tags: [Problems]
+      summary: Update a problem
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Updated } }
+    delete:
+      tags: [Problems]
+      summary: Soft-delete a problem (blocked if used by a published assessment)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Deleted }, "409": { description: In use by a published assessment } }
+
+  /assessments:
+    post:
+      tags: [Assessments]
+      summary: Create a DRAFT assessment (COMPANY only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, description]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                durationMinutes: { type: integer, default: 60 }
+                passingScore: { type: integer, default: 60 }
+      responses: { "201": { description: Created } }
+    get:
+      tags: [Assessments]
+      summary: List the company's assessments (paginated/filterable/searchable)
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [DRAFT, PUBLISHED, ARCHIVED] } }
+        - { name: q, in: query, schema: { type: string } }
+      responses: { "200": { description: OK } }
+
+  /assessments/{id}:
+    get:
+      tags: [Assessments]
+      summary: Get an assessment with its attached problems
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/NotFound" } }
+    patch:
+      tags: [Assessments]
+      summary: Update a DRAFT assessment
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Updated }, "409": { description: Not editable once published } }
+    delete:
+      tags: [Assessments]
+      summary: Soft-delete an assessment
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Deleted } }
+
+  /assessments/{id}/problems:
+    post:
+      tags: [Assessments]
+      summary: Attach a problem from the company's bank to a DRAFT assessment
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [problemId]
+              properties:
+                problemId: { type: string, format: uuid }
+                order: { type: integer }
+                pointsOverride: { type: integer }
+      responses: { "201": { description: Attached } }
+
+  /assessments/{id}/problems/{problemId}:
+    delete:
+      tags: [Assessments]
+      summary: Detach a problem from a DRAFT assessment
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: problemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses: { "200": { description: Detached } }
+
+  /assessments/{id}/publish:
+    patch:
+      tags: [Assessments]
+      summary: Publish a DRAFT assessment (consumes 1 assessment credit)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Published }
+        "403": { description: No assessment credits remaining }
+        "400": { description: No problems attached }
+
+  /assessments/{assessmentId}/invitations:
+    post:
+      tags: [Invitations]
+      summary: Invite a candidate (by email) to a PUBLISHED assessment
+      parameters: [{ name: assessmentId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidateEmail]
+              properties:
+                candidateEmail: { type: string, format: email }
+                expiresInDays: { type: integer, default: 14 }
+      responses: { "201": { description: Invited } }
+    get:
+      tags: [Invitations]
+      summary: List invitations sent for an assessment
+      parameters: [{ name: assessmentId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK } }
+
+  /assessments/{assessmentId}/attempts:
+    get:
+      tags: [Attempts]
+      summary: List all candidate attempts for an assessment (COMPANY only)
+      parameters: [{ name: assessmentId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK } }
+
+  /invitations/me:
+    get:
+      tags: [Invitations]
+      summary: List the current candidate's invitations
+      responses: { "200": { description: OK } }
+
+  /invitations/{id}/accept:
+    post:
+      tags: [Invitations]
+      summary: Accept an invitation — creates a timed Attempt
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "201": { description: Attempt created }, "409": { description: Already responded / expired } }
+
+  /invitations/{id}/decline:
+    post:
+      tags: [Invitations]
+      summary: Decline an invitation
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Declined } }
+
+  /attempts/me:
+    get:
+      tags: [Attempts]
+      summary: List the current candidate's attempts
+      responses: { "200": { description: OK } }
+
+  /attempts/{id}:
+    get:
+      tags: [Attempts]
+      summary: Get an attempt (owner candidate, owning company, or admin)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Forbidden" } }
+
+  /attempts/{id}/answers:
+    post:
+      tags: [Attempts]
+      summary: Save/update an answer for a problem within an in-progress attempt
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [problemId]
+              properties:
+                problemId: { type: string, format: uuid }
+                selectedOption: { type: string, description: "For MCQ" }
+                answerText: { type: string, description: "For WRITTEN" }
+                code: { type: string, description: "For CODING" }
+                language: { type: string }
+      responses: { "200": { description: Saved }, "409": { description: Attempt not in progress / expired } }
+
+  /attempts/{id}/submit:
+    post:
+      tags: [Attempts]
+      summary: Finalize an attempt — auto-scores MCQ, queues WRITTEN/CODING for manual review
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Submitted } }
+
+  /attempts/{id}/report:
+    get:
+      tags: [Attempts]
+      summary: Get the scored breakdown of a submitted/evaluated attempt
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK }, "409": { description: Not submitted yet } }
+
+  /submissions/{id}:
+    get:
+      tags: [Submissions]
+      summary: Get a submission (owning company only)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK } }
+
+  /submissions/{id}/evaluate:
+    patch:
+      tags: [Submissions]
+      summary: Manually score a WRITTEN/CODING submission
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [score]
+              properties:
+                score: { type: integer }
+                feedback: { type: string }
+      responses: { "200": { description: Evaluated } }
+
+  /payments/initiate:
+    post:
+      tags: [Payments]
+      summary: Start a Stripe Checkout session to purchase assessment credits (COMPANY only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [package]
+              properties:
+                package: { type: string, enum: [SMALL, MEDIUM, LARGE] }
+      responses: { "201": { description: Checkout session created, returns checkoutUrl } }
+
+  /payments/webhook:
+    post:
+      tags: [Payments]
+      summary: Stripe webhook receiver (signature-verified; not called by clients directly)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { "200": { description: Processed } }
+
+  /payments/me:
+    get:
+      tags: [Payments]
+      summary: List the current company's payment history
+      responses: { "200": { description: OK } }
+
+  /payments/{id}:
+    get:
+      tags: [Payments]
+      summary: Get a payment by id
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK } }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all platform users (ADMIN only)
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: role, in: query, schema: { type: string, enum: [CANDIDATE, COMPANY, ADMIN] } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: isActive, in: query, schema: { type: string, enum: ["true", "false"] } }
+      responses: { "200": { description: OK } }
+
+  /admin/users/{id}/role:
+    patch:
+      tags: [Admin]
+      summary: Change a user's role (ADMIN only)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties: { role: { type: string, enum: [CANDIDATE, COMPANY, ADMIN] } }
+      responses: { "200": { description: Updated } }
+
+  /admin/users/{id}/status:
+    patch:
+      tags: [Admin]
+      summary: Activate/deactivate a user account (ADMIN only)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isActive]
+              properties: { isActive: { type: boolean } }
+      responses: { "200": { description: Updated } }
+
+  /admin/dashboard-stats:
+    get:
+      tags: [Admin]
+      summary: Platform-wide dashboard statistics (ADMIN only)
+      responses: { "200": { description: OK } }
+
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Browse audit log entries (ADMIN only)
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: entity, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: actorId, in: query, schema: { type: string, format: uuid } }
+      responses: { "200": { description: OK } }
