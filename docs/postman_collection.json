@@ -1,0 +1,536 @@
+{
+  "info": {
+    "name": "Developer Assessment Platform API (B7A6 — L2B7-0384)",
+    "description": "Full walkthrough: register/login as Company + Candidate, create a problem bank, build & publish an assessment, invite a candidate, accept & complete an attempt, evaluate it, and purchase credits via Stripe. Run requests top-to-bottom within a folder — tokens and ids are captured automatically into collection variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{companyAccessToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api/v1" },
+    { "key": "companyAccessToken", "value": "" },
+    { "key": "companyRefreshToken", "value": "" },
+    { "key": "candidateAccessToken", "value": "" },
+    { "key": "candidateRefreshToken", "value": "" },
+    { "key": "adminAccessToken", "value": "" },
+    { "key": "candidateEmail", "value": "" },
+    { "key": "problemMcqId", "value": "" },
+    { "key": "problemCodingId", "value": "" },
+    { "key": "assessmentId", "value": "" },
+    { "key": "invitationId", "value": "" },
+    { "key": "attemptId", "value": "" },
+    { "key": "submissionCodingId", "value": "" },
+    { "key": "paymentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 - Auth",
+      "item": [
+        {
+          "name": "Register Company",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"HR Manager\",\n  \"email\": \"hr+{{$timestamp}}@techcorp-demo.com\",\n  \"password\": \"Company123!\",\n  \"role\": \"COMPANY\",\n  \"companyName\": \"TechCorp Postman Demo\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.success) {",
+                  "  pm.collectionVariables.set('companyAccessToken', json.data.accessToken);",
+                  "  pm.collectionVariables.set('companyRefreshToken', json.data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register Candidate",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jamie Candidate\",\n  \"email\": \"candidate+{{$timestamp}}@demo.com\",\n  \"password\": \"Candidate123!\",\n  \"role\": \"CANDIDATE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.success) {",
+                  "  pm.collectionVariables.set('candidateAccessToken', json.data.accessToken);",
+                  "  pm.collectionVariables.set('candidateRefreshToken', json.data.refreshToken);",
+                  "  pm.collectionVariables.set('candidateEmail', json.data.user.email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Admin (seeded)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@devassess.com\",\n  \"password\": \"ChangeMe123!\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.success) { pm.collectionVariables.set('adminAccessToken', json.data.accessToken); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token (company)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/refresh-token",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{companyRefreshToken}}\"\n}" }
+          }
+        },
+        {
+          "name": "Logout (company)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Users & Profiles",
+      "item": [
+        {
+          "name": "Get my profile (company)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/users/me"
+          }
+        },
+        {
+          "name": "Update my profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/users/me",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"HR Manager (Updated)\"\n}" }
+          }
+        },
+        {
+          "name": "Update company profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/companies/me",
+            "body": { "mode": "raw", "raw": "{\n  \"website\": \"https://techcorp.example.com\",\n  \"industry\": \"Software\"\n}" }
+          }
+        },
+        {
+          "name": "Update candidate profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{candidateAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/candidates/me",
+            "body": { "mode": "raw", "raw": "{\n  \"headline\": \"Full-stack developer\",\n  \"skills\": [\"TypeScript\", \"Node.js\"]\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Problem Bank (Company)",
+      "item": [
+        {
+          "name": "Create MCQ problem",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/problems",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Event loop basics\",\n  \"description\": \"Which statement best describes the Node.js event loop?\",\n  \"type\": \"MCQ\",\n  \"difficulty\": \"EASY\",\n  \"points\": 10,\n  \"options\": [\n    { \"id\": \"a\", \"text\": \"Multi-threaded by default\" },\n    { \"id\": \"b\", \"text\": \"Non-blocking I/O on a single thread\" }\n  ],\n  \"correctOption\": \"b\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["const j = pm.response.json(); if (j.success) pm.collectionVariables.set('problemMcqId', j.data.id);"] }
+            }
+          ]
+        },
+        {
+          "name": "Create CODING problem",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/problems",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Two Sum\",\n  \"description\": \"Return indices of the two numbers that add up to target.\",\n  \"type\": \"CODING\",\n  \"difficulty\": \"MEDIUM\",\n  \"points\": 20,\n  \"testCases\": [ { \"input\": \"[2,7,11,15], 9\", \"expectedOutput\": \"[0,1]\" } ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["const j = pm.response.json(); if (j.success) pm.collectionVariables.set('problemCodingId', j.data.id);"] }
+            }
+          ]
+        },
+        {
+          "name": "List problems (paginated/filter/search)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/problems?page=1&limit=10&type=MCQ&sortBy=createdAt&sortOrder=desc"
+          }
+        },
+        {
+          "name": "Get problem by id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/problems/{{problemMcqId}}"
+          }
+        },
+        {
+          "name": "Update problem",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/problems/{{problemMcqId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"points\": 15\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Assessments (Company)",
+      "item": [
+        {
+          "name": "Create assessment (DRAFT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/assessments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend Engineer Screening\",\n  \"description\": \"Screens JS fundamentals and algorithms\",\n  \"durationMinutes\": 45,\n  \"passingScore\": 60\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["const j = pm.response.json(); if (j.success) pm.collectionVariables.set('assessmentId', j.data.id);"] }
+            }
+          ]
+        },
+        {
+          "name": "List my assessments",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/assessments?page=1&limit=10"
+          }
+        },
+        {
+          "name": "Attach MCQ problem",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/assessments/{{assessmentId}}/problems",
+            "body": { "mode": "raw", "raw": "{\n  \"problemId\": \"{{problemMcqId}}\",\n  \"order\": 0\n}" }
+          }
+        },
+        {
+          "name": "Attach CODING problem",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/assessments/{{assessmentId}}/problems",
+            "body": { "mode": "raw", "raw": "{\n  \"problemId\": \"{{problemCodingId}}\",\n  \"order\": 1\n}" }
+          }
+        },
+        {
+          "name": "Get assessment (with problems)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/assessments/{{assessmentId}}"
+          }
+        },
+        {
+          "name": "Publish assessment (spends 1 credit)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/assessments/{{assessmentId}}/publish"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Invitations",
+      "item": [
+        {
+          "name": "Invite candidate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/assessments/{{assessmentId}}/invitations",
+            "body": { "mode": "raw", "raw": "{\n  \"candidateEmail\": \"{{candidateEmail}}\",\n  \"expiresInDays\": 14\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["const j = pm.response.json(); if (j.success) pm.collectionVariables.set('invitationId', j.data.id);"] }
+            }
+          ]
+        },
+        {
+          "name": "List invitations (company view)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/assessments/{{assessmentId}}/invitations"
+          }
+        },
+        {
+          "name": "List my invitations (candidate)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{candidateAccessToken}}" }],
+            "url": "{{baseUrl}}/invitations/me"
+          }
+        },
+        {
+          "name": "Accept invitation (creates Attempt)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{candidateAccessToken}}" }],
+            "url": "{{baseUrl}}/invitations/{{invitationId}}/accept"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["const j = pm.response.json(); if (j.success) pm.collectionVariables.set('attemptId', j.data.id);"] }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Attempts & Submissions",
+      "item": [
+        {
+          "name": "Get my attempt",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{candidateAccessToken}}" }],
+            "url": "{{baseUrl}}/attempts/{{attemptId}}"
+          }
+        },
+        {
+          "name": "Answer MCQ problem",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{candidateAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/attempts/{{attemptId}}/answers",
+            "body": { "mode": "raw", "raw": "{\n  \"problemId\": \"{{problemMcqId}}\",\n  \"selectedOption\": \"b\"\n}" }
+          }
+        },
+        {
+          "name": "Answer CODING problem",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{candidateAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/attempts/{{attemptId}}/answers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"problemId\": \"{{problemCodingId}}\",\n  \"code\": \"function twoSum(nums, target) { /* ... */ }\",\n  \"language\": \"javascript\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit attempt (auto-evaluates MCQ)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{candidateAccessToken}}" }],
+            "url": "{{baseUrl}}/attempts/{{attemptId}}/submit"
+          }
+        },
+        {
+          "name": "List attempts for assessment (company)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/assessments/{{assessmentId}}/attempts"
+          }
+        },
+        {
+          "name": "Get attempt report",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{candidateAccessToken}}" }],
+            "url": "{{baseUrl}}/attempts/{{attemptId}}/report"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.success) {",
+                  "  const codingSub = j.data.breakdown.find(b => b.type === 'CODING');",
+                  "  if (codingSub) pm.collectionVariables.set('submissionCodingId', codingSub.problemId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Evaluate CODING submission (company)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/submissions/{{submissionCodingId}}/evaluate",
+            "body": { "mode": "raw", "raw": "{\n  \"score\": 18,\n  \"feedback\": \"Correct approach, minor edge case missed.\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Payments (Stripe)",
+      "item": [
+        {
+          "name": "Initiate credit purchase",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyAccessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/payments/initiate",
+            "body": { "mode": "raw", "raw": "{\n  \"package\": \"SMALL\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["const j = pm.response.json(); if (j.success) pm.collectionVariables.set('paymentId', j.data.payment.id);"] }
+            }
+          ]
+        },
+        {
+          "name": "List my payments",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/payments/me"
+          }
+        },
+        {
+          "name": "Get payment by id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyAccessToken}}" }],
+            "url": "{{baseUrl}}/payments/{{paymentId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Admin",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminAccessToken}}" }],
+            "url": "{{baseUrl}}/admin/users?page=1&limit=10"
+          }
+        },
+        {
+          "name": "Dashboard stats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminAccessToken}}" }],
+            "url": "{{baseUrl}}/admin/dashboard-stats"
+          }
+        },
+        {
+          "name": "Audit logs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminAccessToken}}" }],
+            "url": "{{baseUrl}}/admin/audit-logs?page=1&limit=20"
+          }
+        }
+      ]
+    }
+  ]
+}
