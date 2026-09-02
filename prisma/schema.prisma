@@ -1,0 +1,377 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  CANDIDATE
+  COMPANY
+  ADMIN
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
+enum ProblemType {
+  MCQ
+  CODING
+  WRITTEN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  COMPLETED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EVALUATED
+  EXPIRED
+}
+
+enum SubmissionStatus {
+  PENDING
+  AUTO_EVALUATED
+  MANUALLY_EVALUATED
+}
+
+enum PaymentProvider {
+  STRIPE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum PaymentPurpose {
+  CREDIT_PURCHASE
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// USERS & PROFILES
+// ──────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  password     String? // null for pure Google-only accounts
+  name         String
+  role         Role         @default(CANDIDATE)
+  provider     AuthProvider @default(LOCAL)
+  googleId     String?      @unique
+  avatarUrl    String?
+  isActive     Boolean      @default(true)
+  refreshToken String? // hashed refresh token (single active session strategy)
+
+  companyProfile   CompanyProfile?
+  candidateProfile CandidateProfile?
+
+  createdAssessments Assessment[]      @relation("AssessmentCreator")
+  createdProblems    Problem[]         @relation("ProblemCreator")
+  sentInvitations    Invitation[]      @relation("InvitationSender")
+  invitationsGot     Invitation[]      @relation("InvitationCandidate")
+  attempts           Attempt[]         @relation("AttemptCandidate")
+  evaluatedSubs      Submission[]      @relation("SubmissionEvaluator")
+  payments           Payment[]         @relation("PaymentUser")
+  auditLogs          AuditLog[]        @relation("AuditActor")
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([role])
+  @@index([email])
+  @@map("users")
+}
+
+model CompanyProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName   String
+  website       String?
+  industry      String?
+  about         String?
+  logoUrl       String?
+  verified      Boolean  @default(false)
+  assessmentCredits Int  @default(1) // free tier: 1 assessment publish credit
+
+  assessments Assessment[]
+  problems    Problem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyName])
+  @@map("company_profiles")
+}
+
+model CandidateProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline        String?
+  bio             String?
+  skills          String[] @default([])
+  experienceYears Int?     @default(0)
+  resumeUrl       String?
+  githubUrl       String?
+  portfolioUrl    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("candidate_profiles")
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PROBLEM BANK
+// ──────────────────────────────────────────────────────────────────────────
+
+model Problem {
+  id          String      @id @default(uuid())
+  companyId   String
+  company     CompanyProfile @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User        @relation("ProblemCreator", fields: [createdById], references: [id])
+
+  title       String
+  description String
+  type        ProblemType
+  difficulty  Difficulty  @default(MEDIUM)
+  points      Int         @default(10)
+  tags        String[]    @default([])
+
+  // MCQ-specific
+  options       Json? // e.g. [{ "id": "a", "text": "..." }, ...]
+  correctOption String?
+
+  // CODING-specific
+  starterCode String?
+  language    String?
+  testCases   Json? // [{ "input": "...", "expectedOutput": "..." }]
+
+  assessmentLinks AssessmentProblem[]
+  submissions     Submission[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([type])
+  @@index([difficulty])
+  @@map("problems")
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// ASSESSMENTS
+// ──────────────────────────────────────────────────────────────────────────
+
+model Assessment {
+  id              String           @id @default(uuid())
+  companyId       String
+  company         CompanyProfile   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdById     String
+  createdBy       User             @relation("AssessmentCreator", fields: [createdById], references: [id])
+
+  title           String
+  description     String
+  durationMinutes Int              @default(60)
+  passingScore    Int              @default(60)
+  status          AssessmentStatus @default(DRAFT)
+
+  problems    AssessmentProblem[]
+  invitations Invitation[]
+  attempts    Attempt[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("assessments")
+}
+
+model AssessmentProblem {
+  id           String     @id @default(uuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  problemId    String
+  problem      Problem    @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  order        Int        @default(0)
+  pointsOverride Int?
+
+  createdAt DateTime @default(now())
+
+  @@unique([assessmentId, problemId])
+  @@index([assessmentId])
+  @@map("assessment_problems")
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// INVITATIONS & ATTEMPTS
+// ──────────────────────────────────────────────────────────────────────────
+
+model Invitation {
+  id           String           @id @default(uuid())
+  assessmentId String
+  assessment   Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  candidateId  String
+  candidate    User             @relation("InvitationCandidate", fields: [candidateId], references: [id])
+  invitedById  String
+  invitedBy    User             @relation("InvitationSender", fields: [invitedById], references: [id])
+
+  token     String           @unique @default(uuid())
+  status    InvitationStatus @default(PENDING)
+  expiresAt DateTime
+
+  attempt Attempt?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([assessmentId, candidateId])
+  @@index([candidateId])
+  @@index([assessmentId])
+  @@index([status])
+  @@map("invitations")
+}
+
+model Attempt {
+  id           String        @id @default(uuid())
+  assessmentId String
+  assessment   Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  candidateId  String
+  candidate    User          @relation("AttemptCandidate", fields: [candidateId], references: [id])
+  invitationId String        @unique
+  invitation   Invitation    @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  status      AttemptStatus @default(IN_PROGRESS)
+  startedAt   DateTime      @default(now())
+  deadlineAt  DateTime
+  submittedAt DateTime?
+  totalScore  Int?
+  maxScore    Int?
+  passed      Boolean?
+
+  submissions Submission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assessmentId])
+  @@index([candidateId])
+  @@index([status])
+  @@map("attempts")
+}
+
+model Submission {
+  id         String           @id @default(uuid())
+  attemptId  String
+  attempt    Attempt          @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  problemId  String
+  problem    Problem          @relation(fields: [problemId], references: [id])
+
+  answerText   String?
+  selectedOption String?
+  code         String?
+  language     String?
+
+  status      SubmissionStatus @default(PENDING)
+  score       Int?
+  feedback    String?
+  evaluatedById String?
+  evaluator     User?          @relation("SubmissionEvaluator", fields: [evaluatedById], references: [id])
+  evaluatedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([attemptId, problemId])
+  @@index([attemptId])
+  @@map("submissions")
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PAYMENTS
+// ──────────────────────────────────────────────────────────────────────────
+
+model Payment {
+  id         String          @id @default(uuid())
+  userId     String
+  user       User            @relation("PaymentUser", fields: [userId], references: [id])
+  provider   PaymentProvider @default(STRIPE)
+  purpose    PaymentPurpose  @default(CREDIT_PURCHASE)
+  amount     Int // smallest currency unit (cents)
+  currency   String          @default("usd")
+  status     PaymentStatus   @default(PENDING)
+  creditsPurchased Int       @default(0)
+
+  providerSessionId String?  @unique
+  providerRef        String? // payment_intent id once captured
+  metadata            Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("payments")
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// AUDIT LOG
+// ──────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorId       String?
+  actor         User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action        String
+  entity        String
+  entityId      String?
+  previousState Json?
+  newState      Json?
+  metadata      Json?
+  ipAddress     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
