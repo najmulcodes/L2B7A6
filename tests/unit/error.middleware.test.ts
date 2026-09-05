@@ -18,15 +18,26 @@ describe("errorHandler", () => {
     expect(res.json).toHaveBeenCalledWith({ success: false, message: "Duplicate", errors: [{ field: "email" }] });
   });
 
-  it("falls back to 500 for unknown errors and never leaks the raw message in production", () => {
+    it("falls back to 500 for unknown errors and never leaks the raw message in production", () => {
+    // isProd is captured once from env.NODE_ENV at module-load time (correct
+    // for a real process, where NODE_ENV never changes mid-run) — so this
+    // test exercises the production branch by mocking the config module
+    // fresh, rather than mutating process.env.NODE_ENV after the fact,
+    // which the already-imported errorHandler would never observe.
+    jest.resetModules();
+    jest.doMock("../../src/config/env", () => ({ isProd: true }));
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { errorHandler: prodErrorHandler } = require("../../src/middleware/error.middleware");
+
     const res = mockRes();
-    process.env.NODE_ENV = "production";
-    errorHandler(new Error("some internal detail"), {} as Request, res, jest.fn());
+    prodErrorHandler(new Error("some internal detail"), {} as Request, res, jest.fn());
     expect(res.status).toHaveBeenCalledWith(500);
     const payload = (res.json as jest.Mock).mock.calls[0][0];
     expect(payload.success).toBe(false);
     expect(payload.message).not.toContain("some internal detail");
-    process.env.NODE_ENV = "test";
+
+    jest.dontMock("../../src/config/env");
+    jest.resetModules();
   });
 
   it("maps JWT errors to 401", () => {

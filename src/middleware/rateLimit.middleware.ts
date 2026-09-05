@@ -18,6 +18,14 @@ function buildLimiter(windowMs: number, max: number, message: string, prefix: st
           prefix: `rl:${prefix}:`,
         })
       : undefined,
+    // If REDIS_URL is *configured* but the instance is unreachable/down at
+    // request time (DNS failure, network partition, wrong host, etc.),
+    // ioredis will reject the RedisStore's commands. Rather than let that
+    // rejection crash the request with a 500, skip rate limiting for the
+    // duration of the outage — availability wins over strict limiting.
+    // (When REDIS_URL is unset entirely, `store` above is already undefined
+    // and express-rate-limit's built-in in-memory store handles it fine.)
+    skip: () => !!redis && redis.status !== "ready" && redis.status !== "connecting",
     handler: (_req, res) => {
       sendError(res, message, 429);
     },
