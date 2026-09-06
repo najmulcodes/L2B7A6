@@ -6,7 +6,6 @@ import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import path from "path";
 import fs from "fs";
-import swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 
 import { env, isProd } from "./config/env";
@@ -44,11 +43,43 @@ export function createApp(): Express {
     sendSuccess(res, { status: "ok", timestamp: new Date().toISOString() }, "Service is healthy");
   });
 
-  // API documentation (Swagger UI backed by docs/openapi.yaml).
+  // API documentation, backed by docs/openapi.yaml.
+  //
+  // Not using swagger-ui-express's swaggerUi.serve/setup here: its CSS/JS
+  // assets live in swagger-ui-dist and are served via express.static() at
+  // runtime rather than require()'d, so Vercel's file tracer prunes them
+  // from the deployed function — assets 404 as text/html and the UI never
+  // renders. Serving the spec as JSON and loading the UI shell/assets from
+  // a CDN sidesteps that entirely.
   const openapiPath = path.join(__dirname, "..", "docs", "openapi.yaml");
   if (fs.existsSync(openapiPath)) {
     const swaggerDocument = YAML.load(openapiPath);
-    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+    app.get("/api-docs/openapi.json", (_req, res) => {
+      res.json(swaggerDocument);
+    });
+
+    app.get("/api-docs", (_req, res) => {
+      res.type("html").send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>CodeRank API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = () => {
+      SwaggerUIBundle({
+        url: "/api-docs/openapi.json",
+        dom_id: "#swagger-ui",
+      });
+    };
+  </script>
+</body>
+</html>`);
+    });
   }
 
   app.use("/api/v1", apiRateLimiter, v1Router);
