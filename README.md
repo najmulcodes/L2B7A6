@@ -253,7 +253,7 @@ https://github.com/najmulcodes/L2B7A6
 
 ## Video walkthrough
 
-_Link here._
+https://drive.google.com/file/d/1pry9EP91xdjNyDWD56cxa7glsngZyPK_/view?usp=sharing
 
 ## Notes for reviewers
 
