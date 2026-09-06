@@ -51,15 +51,38 @@ export function createApp(): Express {
   // from the deployed function — assets 404 as text/html and the UI never
   // renders. Serving the spec as JSON and loading the UI shell/assets from
   // a CDN sidesteps that entirely.
+  //
+  // helmet()'s default CSP (script-src/default-src 'self') correctly blocks
+  // the CDN bundle and would also block an inline <script>. Don't loosen the
+  // global CSP for this — that same header is protecting /api/v1. Instead,
+  // override it only on these three paths, and keep the init code in an
+  // external same-origin file so 'unsafe-inline' is never needed at all.
+  const docsCsp = helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://unpkg.com"],
+      styleSrc: ["'self'", "https://unpkg.com"],
+      connectSrc: ["'self'", "https://unpkg.com"],
+    },
+  });
+
   const openapiPath = path.join(__dirname, "..", "docs", "openapi.yaml");
   if (fs.existsSync(openapiPath)) {
     const swaggerDocument = YAML.load(openapiPath);
 
-    app.get("/api-docs/openapi.json", (_req, res) => {
+    app.get("/api-docs/openapi.json", docsCsp, (_req, res) => {
       res.json(swaggerDocument);
     });
 
-    app.get("/api-docs", (_req, res) => {
+    app.get("/api-docs/init.js", docsCsp, (_req, res) => {
+      res
+        .type("application/javascript")
+        .send(
+          `window.onload = () => { SwaggerUIBundle({ url: "/api-docs/openapi.json", dom_id: "#swagger-ui" }); };`,
+        );
+    });
+
+    app.get("/api-docs", docsCsp, (_req, res) => {
       res.type("html").send(`<!DOCTYPE html>
 <html>
 <head>
@@ -69,14 +92,7 @@ export function createApp(): Express {
 <body>
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
-  <script>
-    window.onload = () => {
-      SwaggerUIBundle({
-        url: "/api-docs/openapi.json",
-        dom_id: "#swagger-ui",
-      });
-    };
-  </script>
+  <script src="/api-docs/init.js"></script>
 </body>
 </html>`);
     });

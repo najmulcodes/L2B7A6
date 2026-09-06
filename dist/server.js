@@ -2549,13 +2549,26 @@ function createApp() {
   app2.get("/health", (_req, res) => {
     sendSuccess(res, { status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() }, "Service is healthy");
   });
+  const docsCsp = import_helmet.default.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://unpkg.com"],
+      styleSrc: ["'self'", "https://unpkg.com"],
+      connectSrc: ["'self'", "https://unpkg.com"]
+    }
+  });
   const openapiPath = import_path.default.join(__dirname, "..", "docs", "openapi.yaml");
   if (import_fs.default.existsSync(openapiPath)) {
     const swaggerDocument = import_yamljs.default.load(openapiPath);
-    app2.get("/api-docs/openapi.json", (_req, res) => {
+    app2.get("/api-docs/openapi.json", docsCsp, (_req, res) => {
       res.json(swaggerDocument);
     });
-    app2.get("/api-docs", (_req, res) => {
+    app2.get("/api-docs/init.js", docsCsp, (_req, res) => {
+      res.type("application/javascript").send(
+        `window.onload = () => { SwaggerUIBundle({ url: "/api-docs/openapi.json", dom_id: "#swagger-ui" }); };`
+      );
+    });
+    app2.get("/api-docs", docsCsp, (_req, res) => {
       res.type("html").send(`<!DOCTYPE html>
 <html>
 <head>
@@ -2565,14 +2578,7 @@ function createApp() {
 <body>
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
-  <script>
-    window.onload = () => {
-      SwaggerUIBundle({
-        url: "/api-docs/openapi.json",
-        dom_id: "#swagger-ui",
-      });
-    };
-  </script>
+  <script src="/api-docs/init.js"></script>
 </body>
 </html>`);
     });
