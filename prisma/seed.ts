@@ -23,7 +23,7 @@ async function main() {
     where: { email: ADMIN_EMAIL },
     update: {},
     create: {
-      name: "Platform Admin",
+      name: "Admin",
       email: ADMIN_EMAIL,
       password: await hash(ADMIN_PASSWORD),
       role: "ADMIN",
@@ -63,7 +63,7 @@ async function main() {
     where: { email: DEMO_CANDIDATE_EMAIL },
     update: {},
     create: {
-      name: "Jamie Candidate",
+      name: "Shuvro Candidate",
       email: DEMO_CANDIDATE_EMAIL,
       password: await hash(DEMO_CANDIDATE_PASSWORD),
       role: "CANDIDATE",

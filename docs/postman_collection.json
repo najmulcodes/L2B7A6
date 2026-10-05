@@ -62,7 +62,7 @@
             "url": "{{baseUrl}}/auth/register",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jamie Candidate\",\n  \"email\": \"candidate+{{$timestamp}}@demo.com\",\n  \"password\": \"Candidate123!\",\n  \"role\": \"CANDIDATE\"\n}"
+              "raw": "{\n  \"name\": \"Shuvro Candidate\",\n  \"email\": \"candidate+{{$timestamp}}@demo.com\",\n  \"password\": \"Candidate123!\",\n  \"role\": \"CANDIDATE\"\n}"
             }
           },
           "event": [
