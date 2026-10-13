@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { prisma } from "../../config/prisma";
-import { env } from "../../config/env";
+import { resolvedStripeSuccessUrl, resolvedStripeCancelUrl } from "../../config/env";
 import { ApiError } from "../../utils/ApiError";
 import { parsePagination, buildMeta } from "../../lib/pagination";
 import { writeAuditLog } from "../../utils/audit";
@@ -39,8 +39,8 @@ export async function initiatePayment(userId: string, packageKey: CreditPackageK
         quantity: 1,
       },
     ],
-    success_url: env.STRIPE_SUCCESS_URL ?? "https://example.com/payments/success?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: env.STRIPE_CANCEL_URL ?? "https://example.com/payments/cancel",
+    success_url: resolvedStripeSuccessUrl ?? "https://example.com/payments/success?session_id={CHECKOUT_SESSION_ID}",
+    cancel_url: resolvedStripeCancelUrl ?? "https://example.com/payments/cancel",
     metadata: { paymentId: payment.id, companyId, credits: String(pkg.credits) },
   });
 

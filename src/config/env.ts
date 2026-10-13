@@ -46,3 +46,27 @@ if (!parsed.success) {
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === "production";
 export const isTest = env.NODE_ENV === "test";
+
+/**
+ * Known-good production frontend origin. This is a hard safety net, not the
+ * primary config path: STRIPE_SUCCESS_URL / STRIPE_CANCEL_URL in Vercel are
+ * still the source of truth. But a misconfigured env var (e.g. left at a
+ * localhost/dev value) must never leak into a production Stripe redirect —
+ * that sends paying users to a URL their browser can't resolve. In
+ * production, any configured success/cancel URL that points at localhost,
+ * 127.0.0.1, or is simply missing is ignored in favor of the real frontend.
+ */
+const PRODUCTION_FRONTEND_URL = "https://coderankk.vercel.app";
+
+function isUnsafeForProduction(url: string | undefined): boolean {
+  if (!url) return true;
+  return /localhost|127\.0\.0\.1/i.test(url);
+}
+
+export const resolvedStripeSuccessUrl = isProd && isUnsafeForProduction(env.STRIPE_SUCCESS_URL)
+  ? `${PRODUCTION_FRONTEND_URL}/payments/success?session_id={CHECKOUT_SESSION_ID}`
+  : env.STRIPE_SUCCESS_URL;
+
+export const resolvedStripeCancelUrl = isProd && isUnsafeForProduction(env.STRIPE_CANCEL_URL)
+  ? `${PRODUCTION_FRONTEND_URL}/payments/cancel`
+  : env.STRIPE_CANCEL_URL;
